@@ -115,15 +115,16 @@ class Main:
             itemurl=item.find("div", {"id": "productTitle"})
             brand=item.find("div", {"class":"brandTop"})
             mfr=item.find("li", {"class":"singleBullet"})
-            if brand.text == "Canon":
-                #print brand.text
-                print mfr.find("span", {"class": "value"}).text
-            #self.dataItems (itemurl.find('a')['href'])
+            importer=item.find("div", {"id": "grayMarket"}).text 
+            print importer
+            if brand.text == "Canon" and importer!='Imported':
+                mfr= mfr.find("span", {"class": "value"}).text
+                self.dataItems (itemurl.find('a')['href'],mfr)
         #if re.search('<a href="[^"]*" class="lnext">Next',itemPageRequest):
         #    return self.scrapItem(url, pgn + 1)
 
     
-    def dataItems(self,url):
+    def dataItems(self,url,mfr):
         headerInfo, itemPageRequest = self.spider.fetchData(url, self.referer)
         dataPagesoup = BeautifulSoup(itemPageRequest)
         breadcrumbs=[]
@@ -147,7 +148,7 @@ class Main:
             name = matchedStrName.group(1) 
         price_list=dataPagesoup.find("span", {"class": "value"})
         #name=dataPagesoup.find("div", {"id": "productHeadingCC"})
-        data=[date.today(),code,name,price,price_list.string]
+        data=[date.today(),mfr,code,name,price,price_list.string]
         for crumb in breadcrumbs[1:]:
             data.append(crumb)
         writer.writerow(data)
