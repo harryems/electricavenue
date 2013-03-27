@@ -2,10 +2,13 @@
 import cookielib
 import urllib
 import urllib2
+import xmlrpclib
+import ConfigParser
 from bs4 import BeautifulSoup
 import csv
 import re
 from datetime import date
+from send_mail import send_mail
 
 
 __author__ = 'Carlos Espinosa'
@@ -54,59 +57,9 @@ class Main:
         self.mainUrl = url
         self.referer = None
 
-    def doOperation(self):
-        self.scrapData(self.mainUrl, self.referer)
-
-    def scrapData(self, url, referer):
-        headerInfo, data = self.spider.fetchData(url, referer)
-        mainPageSoup = BeautifulSoup(data)
-        menu = mainPageSoup.find("div", {"class": "mainCategoryLinks"})
-        for menuSegundoNivel in menu.find_all("a"): 
-            print "Categoria"+menuSegundoNivel.get('href')
-            self.scrapCategoryData( menuSegundoNivel.get('href'))
-
-    def scrapCategoryData(self, url):
-        listURL=[]
-        try:
-            headerInfo, categoryPageRequest = self.spider.fetchData(url, self.referer)
-            categoryPagesoup = BeautifulSoup(categoryPageRequest)
-            subcategoriesTipe1 = categoryPagesoup.find_all('div', {"class": "column"})
-            for hrefSubCategories in subcategoriesTipe1:
-                hrefsub = hrefSubCategories.find_all('a')
-                for tmp in hrefsub:
-                    print "\t sub categ:" + tmp.get('href')
-                    self.scrapItem(tmp.get('href'))
-            subcategoriesTipe2 = categoryPagesoup.find_all('div', {"class": "categoryGroup"})
-            for hrefSubCategories2 in subcategoriesTipe2:
-                hrefsub2 = hrefSubCategories2.find_all('a')
-                for tmp2 in hrefsub2:
-                    listURL.append(tmp2.get('href'))
-                listURL=set(listURL)
-                for tmp2 in listURL:
-                    print "\t sub categ" + tmp2
-                    self.scrapSubCategoryData(tmp2)
-
-        except Exception, x:
-            print x
-
-    def scrapSubCategoryData(self, url):
-        listURL=[]
-        try:
-            headerInfo, categoryPageRequest = self.spider.fetchData(url, self.referer)
-            categoryPagesoup = BeautifulSoup(categoryPageRequest)
-            subcategoriesTipe1 = categoryPagesoup.find_all('table', {"class": "catTable"})
-            for hrefSubCategories in subcategoriesTipe1:
-                hrefsub = hrefSubCategories.find_all('a')
-                for tmp in hrefsub:
-                    print " \t \t sub sub categ:" + tmp.get('href')
-                    self.scrapItem(tmp.get('href'))
-
-        except Exception, x:
-            print x
-
     def scrapItem(self, url,pgn=1):
         tmp =url.split('/')
-        urlIntern=mainUrl+'c/buy/'+tmp[5]+'/ipp/100/ci/'+tmp[7]+'/pn/'+str(pgn)+'/N/'+tmp[9]        
+        urlIntern=mainUrl+'/c/buy/'+tmp[5]+'/ipp/100/ci/'+tmp[7]+'/pn/'+str(pgn)+'/N/'+tmp[9]        
         headerInfo, itemPageRequest = self.spider.fetchData(urlIntern, self.referer)
         itemPagesoup = BeautifulSoup(itemPageRequest)
         block=itemPagesoup.find_all("div", {"class": "productBlockCenter"})
@@ -114,13 +67,11 @@ class Main:
             itemurl=item.find("div", {"id": "productTitle"})
             brand=item.find("div", {"class":"brandTop"})
             mfr=item.find("li", {"class":"singleBullet"})
-            importer=item.find("div", {"id": "grayMarket"}).text
-            if brand.text == "Canon" and not re.search('Imported',importer) :
-                print importer
+            importer=item.find("div", {"id": "grayMarket"}).text 
+            if brand.text in ["Canon","Nikon","Olympus"] and importer!='Imported':
                 if mfr!=None:            
                     mfr= mfr.find("span", {"class": "value"}).text 
                 self.dataItems (itemurl.find('a')['href'],mfr)
-                
         if re.search('<a href="[^"]*" class="lnext">Next',itemPageRequest):
             return self.scrapItem(url, pgn + 1)
 
@@ -138,7 +89,7 @@ class Main:
         code=''
         matchedStrPrice = re.search('(?i)cmCreateProductviewTag\("[^"]*?",\s*?"[^"]*?",\s*?"[^"]*?",\s*?"([^"]*)"\)', itemPageRequest)
         if matchedStrPrice:
-            special_price = matchedStrPrice.group(1)
+            special_price = float(matchedStrPrice.group(1).replace('$','').replace(',',''))
         
         matchedStrCode = re.search('(?i)cmCreateProductviewTag\(\s*?"([^"]*)"', itemPageRequest)
         if matchedStrCode:
@@ -158,7 +109,7 @@ class Main:
         if re.search('See cart for product details', info.text):
             incar="incar"
             price=info.find("li", {"class":"price hiLight"})
-            price=price.find("span", {"class": "value"}).text.strip()
+            price=float(price.find("span", {"class": "value"}).text.strip().replace('$','').replace(',',''))
             
         if re.search('Instant Saving', info.text):
             if incar=="incar":
@@ -169,9 +120,9 @@ class Main:
             print code
             #prices=info.find("ul", {"class": 'priceList hasMorePrices'})
             price=info.find("li", {"class":"price hiLight"})
-            price=price.find("span", {"class": "value"}).text.strip()
+            price=float(price.find("span", {"class": "value"}).text.strip().replace('$','').replace(',',''))
             price_rebate=info.find("li", {"class":"instant hiLight rebates"})
-            price_rebate=price_rebate.find("span", {"class": "value red"}).text.strip()
+            price_rebate=float(price_rebate.find("span", {"class": "value red"}).text.strip().replace('$','').replace(',',''))
              
             date_rebate=info.find("span", {"class": "offerEnds"}).text.strip()#.replace('\S', '')#.replace('\n', '').replace('\r', '')
             match=re.search(r'.......\'..',date_rebate)
@@ -180,25 +131,60 @@ class Main:
                 date_rebate[0]=monts[date_rebate[0]]
                 date_rebate="20"+date_rebate[2]+"-"+date_rebate[1]+"-"+date_rebate[0]
 
+ 
+ 
+            if mfr=='':
+                parms=[{'name':str(name)}]
+            else:
+                parms=[{'model':str(mfr)}]
+            products = server.call(token, 'catalog_product.list',parms)
+            sku=''
+            for product in products:
+                sku = product['sku']
+ 
         
-            
+            if sku:
+                try:
+                    info = server.call(token, 'catalog_product.info',[sku])
+                    magentoPrice= info['price']
+                    magentoEspecialPrice= info['special_price']
+                    if price!=float(magentoPrice) or special_price!=float(magentoEspecialPrice):
+                        data=[date.today(),mfr,code,name,special_price,price,incar,abs(price_rebate),date_rebate,magentoEspecialPrice,magentoPrice]
+                        for crumb in breadcrumbs[1:]:
+                            data.append(crumb)
+                        writer.writerow(data)
+                        print data                       
+ 
+        
+                except Exception, x:
+                    print x            
 
 
         #name=dataPagesoup.find("div", {"id": "productHeadingCC"})
-        data=[date.today(),mfr,code,name,special_price,price,incar,price_rebate,date_rebate]
-        for crumb in breadcrumbs[1:]:
-            data.append(crumb)
-        writer.writerow(data)
-        print data
+
 
 if __name__ == "__main__":
-    mainUrl = "http://www.bhphotovideo.com/"
+    mainUrl = "http://www.bhphotovideo.com"
     monts={"JAN":"1","FEB":"2","MAR":"3","APR":"4","MAY":"5","JUN":"6","JUL":"7","AUG":"8","SEP":"9","OCT":"10","NOV":"11","DEC":"12"}
-    writer = csv.writer(open(str(date.today())+"cameras.csv", "wb"))
+    updateArchive=str(date.today())+"_update.csv"
+    writer = csv.writer(open(updateArchive, "wb"))
+
+    config = ConfigParser.ConfigParser()
+    config.read("config.ini")
+    #tip="magento_test"
+    tip="magento_live"
+    mg_url = config.get(tip, "mg_url")
+    mg_username = config.get(tip, "mg_username")
+    mg_password = config.get(tip, "mg_password") 
+    
+    server = xmlrpclib.ServerProxy(mg_url)
+    token = server.login(mg_username, mg_password)
     main = Main(mainUrl)
-    #main.doOperation()
     main.scrapItem('http://www.bhphotovideo.com/c/buy/Digital-Cameras/ci/9811/N/4288586282+4291570227')
-                
-    #main.scrapItem('http://www.bhphotovideo.com/c/buy/Lenses/ci/15492/N/4288584250')
-     
+    main.scrapItem('http://www.bhphotovideo.com/c/buy/Lenses/ci/15492/N/4288584250+4291570227')
+
+    sendMail=send_mail()
+    sendMail.send(updateArchive)
+    #testmail.send_mail(str(date.today())+"CanonCameras.csv")            
+
 
