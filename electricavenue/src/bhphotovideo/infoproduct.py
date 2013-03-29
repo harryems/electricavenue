@@ -10,8 +10,8 @@ import xmlrpclib
 
 config = ConfigParser.ConfigParser()
 config.read("config.ini")
-tip="magento_test"
-#tip="magento_live"
+#tip="magento_test"
+tip="magento_live"
 
 #output='output.csv'
 #writer = csv.writer(open("output.csv", "wb"))
@@ -21,5 +21,5 @@ mg_password = config.get(tip, "mg_password")
 
 server = xmlrpclib.ServerProxy(mg_url)
 token = server.login(mg_username, mg_password)
-info = server.call(token, 'catalog_product.info',['013803152265'])
+info = server.call(token, 'catalog_product.info',['885909436712'])
 print info

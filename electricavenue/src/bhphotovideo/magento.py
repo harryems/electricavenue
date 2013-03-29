@@ -8,8 +8,7 @@ class Main:
     def insert(self):
         server = xmlrpclib.ServerProxy(mg_url)
         token = server.login(mg_username, mg_password)
-        
-        test=0
+
         for row in infile:
             (mfr,BHcode,BHname,BHspecialprice,BHprice,typeIncar,priceRebate,dateRebate) = (row[1:9])
             if mfr=='':
@@ -20,35 +19,43 @@ class Main:
             sku=''
             for product in products:
                 sku = product['sku']
-
-            try:
-                if sku:
-                    info = server.call(token, 'catalog_product.info',[sku])
-                    magentoPrice= info['price']
-                    magentoEspecialPrice= info['special_price']
-                    BHprice=BHprice.replace("$", '').replace(",","")
-                    priceRebate=priceRebate.replace("$", '').replace(",","")
+            
+            if sku:
+                try:
+                
+                    #info = server.call(token, 'catalog_product.info',[sku])
+#                    magentoPrice= info['price']
+#                    magentoEspecialPrice= info['special_price']
+#                    BHprice=BHprice.replace("$", '').replace(",","")
+#                    priceRebate=priceRebate.replace("$", '').replace(",","")
                     data={'price':BHprice}
-                    data['special_price']=BHspecialprice
+                    
                     if typeIncar=='normal':
                         data['msrp_enabled']='0'
-                        data['msrp_display_actual_price_type']='4'                        
-                    
+                        data['msrp_display_actual_price_type']='4'
+                        data['special_price']=''
+                           
+                    if typeIncar=='rebateWitoutShow':                     
+                        data['msrp_enabled']='1'
+                        data['msrp_display_actual_price_type']='1'
+                        data['special_price']=BHspecialprice                    
                     if typeIncar=='incar':
                         data['msrp_enabled']='1'
                         data['msrp_display_actual_price_type']='1'
-                        data['instant_savings']=abs(float(priceRebate))
+                        data['special_price']=BHspecialprice
                     if typeIncar=='rebate':
                         #data['msrp_enabled']=str(priceRebate)
                         data['special_to_date']=str(dateRebate )+' 00:00:00'
                         data['msrp_enabled']='0'
                         data['msrp_display_actual_price_type']='4'
-                        data['instant_savings']=abs(float(priceRebate))
+                        data['instant_savings']=priceRebate
+                        data['special_price']=BHspecialprice
                     if typeIncar=='rebate-incar':
                         data['special_to_date']=str(dateRebate )+' 00:00:00'
                         data['msrp_enabled']='1'
                         data['msrp_display_actual_price_type']='1'
-                        data['instant_savings']=abs(float(priceRebate)) 
+                        data['instant_savings']=priceRebate
+                        data['special_price']=BHspecialprice 
                         #'news_to_date': '2013-03-25 00:00:00'
                         
 
@@ -56,8 +63,8 @@ class Main:
                     r = server.call(token, 'catalog_product.update',parms)
                     print r
                         #writer.writerow([sku])
-            except Exception, x:
-                print x
+                except Exception, x:
+                    print x
 
         
 
